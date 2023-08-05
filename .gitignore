@@ -1,5 +1,4 @@
 /.vscode
-/temp
 /temp/*
 /__pycache__
 ```
