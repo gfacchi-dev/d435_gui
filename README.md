@@ -1,4 +1,3 @@
-
 # D435 GUI for Face Reconstruction
 
 This project contains a GUI for managing a couple of Intel RealSense D435 in stereo configuration, with a 33cm baseline and 30° convergence angle.
@@ -7,7 +6,6 @@ This project contains a GUI for managing a couple of Intel RealSense D435 in ste
 
 - [@gfacchi-dev](https://github.com/gfacchi-dev)
 - [@jacobuu](https://github.com/jacobuu)
-
 
 ## Run Locally
 
@@ -41,3 +39,8 @@ Start the GUI
   python ./main.py
 ```
 
+## Commands
+
+- <kbd>c</kbd>/<kbd>C</kbd> -> Calibrate the system
+- <kbd>a</kbd>/<kbd>A</kbd> -> Single-shot acquisition
+- <kbd>m</kbd>/<kbd>M</kbd> -> Single-shot acquisition with mesh creation

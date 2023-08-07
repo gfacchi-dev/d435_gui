@@ -431,8 +431,8 @@ def acquire(mesh=False):
         o3d.io.write_triangle_mesh(f"./acquisizioni/{datestring}/mesh.obj", mesh)
 
 
-app.bind("<s>", lambda _: calibrate())
-app.bind("<S>", lambda _: calibrate())
+app.bind("<c>", lambda _: calibrate())
+app.bind("<C>", lambda _: calibrate())
 
 app.bind("<a>", lambda _: acquire())
 app.bind("<A>", lambda _: acquire())
