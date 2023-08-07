@@ -4,6 +4,7 @@ from utils import (
     FrameQueue,
     mean_variance_and_inliers_along_third_dimension_ignore_zeros,
     get_maps,
+    save_pcl,
 )
 
 import cv2
@@ -14,6 +15,7 @@ import pickle
 import open3d as o3d
 import math
 import itertools
+import os, datetime
 
 # System settings
 customtkinter.set_appearance_mode("system")
@@ -94,13 +96,13 @@ colorizer = rs.colorizer()
 # write a function that queues 90 frames and if an element added exceeds dimensions autoremoves last element
 
 
-calibration_depth_queue = FrameQueue(max_frames=90, frame_shape=(720, 1280))
-calibration_depth_queue_2 = FrameQueue(max_frames=90, frame_shape=(720, 1280))
+depth_queue = FrameQueue(max_frames=90, frame_shape=(720, 1280))
+depth_queue_2 = FrameQueue(max_frames=90, frame_shape=(720, 1280))
+rgb_queue = FrameQueue(max_frames=1, frame_shape=(720, 1280, 3))
+rgb_queue_2 = FrameQueue(max_frames=1, frame_shape=(720, 1280, 3))
 
 
-def process_frames(
-    frames, pipeline, colorizer, canvas_RGB, canvas_depth, calibration_depth_queue
-):
+def process_frames(frames, pipeline, colorizer, canvas_RGB, canvas_depth, depth_queue):
     depth_frame = frames.get_depth_frame()
     color_frame = frames.get_color_frame()
 
@@ -116,15 +118,17 @@ def process_frames(
     canvas_RGB.create_image(0, 0, image=photo_RGB, anchor=NW)
     canvas_depth.create_image(0, 0, image=photo_depth, anchor=NW)
 
-    calibration_depth_queue.add_frame(np.asanyarray(depth_frame.get_data()))
-    print(len(calibration_depth_queue))
+    depth_queue.add_frame(np.asanyarray(depth_frame.get_data()))
+    print(len(depth_queue))
 
 
 def open_camera():
-    global color_image, color_image_2, canvas_depth, canvas_depth_2, canvas_RGB, canvas_RGB_2, photo_RGB, photo_RGB_2, photo_depth, photo_depth_2, frame_RGB, frame_RGB_2, frame_depth, frame_depth_2, calibration_depth_queue, calibration_depth_queue_2
+    global color_image, color_image_2, canvas_depth, canvas_depth_2, canvas_RGB, canvas_RGB_2, photo_RGB, photo_RGB_2, photo_depth, photo_depth_2, frame_RGB, frame_RGB_2, frame_depth, frame_depth_2, depth_queue, depth_queue_2
 
     frames = pipeline.wait_for_frames()
+    frames = align.process(frames)
     frames_2 = pipeline_2.wait_for_frames()
+    frames_2 = align.process(frames_2)
 
     depth_frame = frames.get_depth_frame()
     depth_frame_2 = frames_2.get_depth_frame()
@@ -152,9 +156,10 @@ def open_camera():
     canvas_depth.create_image(0, 0, image=photo_depth, anchor=NW)
     canvas_depth_2.create_image(0, 0, image=photo_depth_2, anchor=NW)
 
-    calibration_depth_queue.add_frame(np.asanyarray(depth_frame.get_data()))
-    calibration_depth_queue_2.add_frame(np.asanyarray(depth_frame_2.get_data()))
-    print(len(calibration_depth_queue), len(calibration_depth_queue_2))
+    depth_queue.add_frame(np.asanyarray(depth_frame.get_data()))
+    depth_queue_2.add_frame(np.asanyarray(depth_frame_2.get_data()))
+    rgb_queue.add_frame(np.asanyarray(color_image))
+    rgb_queue_2.add_frame(np.asanyarray(color_image))
     app.after(10, open_camera)
 
 
@@ -164,7 +169,7 @@ def calibrate():
         variance_left,
         inliers_left,
     ) = mean_variance_and_inliers_along_third_dimension_ignore_zeros(
-        calibration_depth_queue.get_frames_as_tensor()
+        depth_queue.get_frames_as_tensor()
     )
 
     (
@@ -172,7 +177,7 @@ def calibrate():
         variance_right,
         inliers_right,
     ) = mean_variance_and_inliers_along_third_dimension_ignore_zeros(
-        calibration_depth_queue_2.get_frames_as_tensor()
+        depth_queue_2.get_frames_as_tensor()
     )
 
     variance_image_l, zero_variance_image_l, threshold_l, filtered_means_l = get_maps(
@@ -313,9 +318,127 @@ def calibrate():
     pickle.dump(calibrated_matrix, open("temp/cal_mat.mat", "wb"))
 
 
+def acquire(mesh=False):
+    datestring = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+    os.mkdir("./acquisizioni/" + datestring)
+    matrice_calibrazione = pickle.load(open("temp/cal_mat.mat", "rb"))
+
+    depth_frame_l = depth_queue_2.get_last_frame()
+    color_frame_l = rgb_queue_2.get_last_frame()
+
+    depth_frame_r = depth_queue.get_last_frame()
+    color_frame_r = rgb_queue.get_last_frame()
+
+    cv2.imwrite(f"./acquisizioni/{datestring}/d_l.png", depth_frame_l)
+    cv2.imwrite(f"./acquisizioni/{datestring}/rgb_l.png", color_frame_l)
+
+    cv2.imwrite(f"./acquisizioni/{datestring}/d_r.png", depth_frame_r)
+    cv2.imwrite(f"./acquisizioni/{datestring}/rgb_r.png", color_frame_r)
+
+    depth_raw_left = o3d.io.read_image(f"./acquisizioni/{datestring}/d_l.png")
+    color_raw_left = o3d.io.read_image(f"./acquisizioni/{datestring}/rgb_l.png")
+    depth_raw_right = o3d.io.read_image(f"./acquisizioni/{datestring}/d_r.png")
+    color_raw_right = o3d.io.read_image(f"./acquisizioni/{datestring}/rgb_r.png")
+
+    rgbd_image_left = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        color_raw_left, depth_raw_left, convert_rgb_to_intensity=False
+    )
+    rgbd_image_right = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        color_raw_right, depth_raw_right, convert_rgb_to_intensity=False
+    )
+
+    camera_intrinsic_left = o3d.camera.PinholeCameraIntrinsic(
+        o3d.camera.PinholeCameraIntrinsic(
+            intr_left.width,
+            intr_left.height,
+            intr_left.fx,
+            intr_left.fy,
+            intr_left.ppx,
+            intr_left.ppy,
+        )
+    )
+    camera_intrinsic_right = o3d.camera.PinholeCameraIntrinsic(
+        o3d.camera.PinholeCameraIntrinsic(
+            intr_right.width,
+            intr_right.height,
+            intr_right.fx,
+            intr_right.fy,
+            intr_right.ppx,
+            intr_right.ppy,
+        )
+    )
+
+    pcd_left = o3d.geometry.PointCloud.create_from_rgbd_image(
+        rgbd_image_left, camera_intrinsic_left
+    )
+    pcd_right = o3d.geometry.PointCloud.create_from_rgbd_image(
+        rgbd_image_right, camera_intrinsic_right
+    )
+
+    bounds = [
+        [-math.inf, math.inf],
+        [-math.inf, math.inf],
+        [0.1, 0.7],
+    ]  # set the bounds
+    bounding_box_points = list(itertools.product(*bounds))  # create limit points
+    bounding_box = o3d.geometry.AxisAlignedBoundingBox.create_from_points(
+        o3d.utility.Vector3dVector(bounding_box_points)
+    )  # create bounding box object
+
+    # Crop the point cloud using the bounding box:
+    pcd_left = pcd_left.crop(bounding_box)
+    pcd_right = pcd_right.crop(bounding_box)
+
+    # Rotazione di 180° intorno all'asse X (ribaltare la point cloud poiché la pinhole camera ribalta la visuale)
+    angolo = np.pi
+    trans_x = np.asarray(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, np.cos(angolo), -np.sin(angolo), 0.0],
+            [0.0, np.sin(angolo), np.cos(angolo), 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+
+    pcd_left.transform(trans_x)
+    pcd_right.transform(trans_x)
+
+    pcd_left.transform(matrice_calibrazione)
+    save_pcl(pcd_left, pcd_right, datestring)
+
+    if mesh:
+        pcd = o3d.io.read_point_cloud(f"acquisizioni/{datestring}/pcl.pcd")
+        cl, ind = pcd.remove_statistical_outlier(nb_neighbors=600, std_ratio=2.0)
+        inlier_cloud = pcd.select_by_index(ind)
+        inlier_cloud.normals = o3d.utility.Vector3dVector(np.zeros((1, 3)))
+        inlier_cloud.estimate_normals()
+
+        inlier_cloud.orient_normals_consistent_tangent_plane(100)
+
+        with o3d.utility.VerbosityContextManager(
+            o3d.utility.VerbosityLevel.Debug
+        ) as cm:
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+                inlier_cloud, depth=10
+            )
+        densities = np.asarray(densities)
+        density_mesh = o3d.geometry.TriangleMesh()
+        density_mesh.vertices = mesh.vertices
+        density_mesh.triangles = mesh.triangles
+        density_mesh.triangle_normals = mesh.triangle_normals
+        vertices_to_remove = densities < np.quantile(densities, 0.01)
+        mesh.remove_vertices_by_mask(vertices_to_remove)
+        o3d.io.write_triangle_mesh(f"./acquisizioni/{datestring}/mesh.obj", mesh)
+
+
 app.bind("<s>", lambda _: calibrate())
 app.bind("<S>", lambda _: calibrate())
 
+app.bind("<a>", lambda _: acquire())
+app.bind("<A>", lambda _: acquire())
+
+app.bind("<m>", lambda _: acquire(mesh=True))
+app.bind("<M>", lambda _: acquire(mesh=True))
 
 open_camera()
 

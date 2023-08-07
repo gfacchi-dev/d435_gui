@@ -2,13 +2,17 @@ import numpy as np
 import torch
 from torch.nn.functional import interpolate
 from scipy.interpolate import interp1d
+import open3d as o3d
 
 
 class FrameQueue:
     def __init__(self, max_frames, frame_shape):
         self.max_frames = max_frames
         self.frame_shape = frame_shape
-        self.buffer = np.empty((max_frames,) + frame_shape, dtype=np.uint8)
+        self.buffer = np.empty(
+            (max_frames,) + frame_shape,
+            dtype=np.uint8 if frame_shape[-1] == 3 else np.uint16,
+        )
         self.index = 0
         self.current_size = 0
 
@@ -21,6 +25,13 @@ class FrameQueue:
 
         self.buffer[self.index] = frame
         self.index = (self.index + 1) % self.max_frames
+
+    def get_last_frame(self):
+        if self.current_size == 0:
+            return None
+
+        last_frame = self.buffer[(self.index - 1) % self.max_frames]
+        return last_frame.copy()
 
     def get_frames_as_tensor(self):
         if self.current_size == 0:
@@ -104,3 +115,37 @@ def get_maps(variances, means, threshold=None):
     variance_image[high_variance_indexes[:, 0], high_variance_indexes[:, 1]] = 255
 
     return variance_image, zero_variance_image, threshold, filtered_means
+
+
+def save_pcl(pointcloud1, pointcloud2, folder):
+    p1_colors = pointcloud1.colors
+    p2_colors = pointcloud2.colors
+    p1_load = pointcloud1.points
+    p2_load = pointcloud2.points
+    p3_colors = np.concatenate((p1_colors, p2_colors), axis=0)
+    p3_load = np.concatenate((p1_load, p2_load), axis=0)
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(p3_load)
+    pcd.colors = o3d.utility.Vector3dVector(p3_colors)
+    o3d.io.write_point_cloud(
+        f"./acquisizioni/{folder}/pcl_l.pcd",
+        pointcloud1,
+        write_ascii=False,
+        compressed=False,
+        print_progress=False,
+    )
+    o3d.io.write_point_cloud(
+        f"./acquisizioni/{folder}/pcl_r.pcd",
+        pointcloud2,
+        write_ascii=False,
+        compressed=False,
+        print_progress=False,
+    )
+    o3d.io.write_point_cloud(
+        f"./acquisizioni/{folder}/pcl.pcd",
+        pcd,
+        write_ascii=False,
+        compressed=False,
+        print_progress=False,
+    )
+    return True
