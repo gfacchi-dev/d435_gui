@@ -171,7 +171,9 @@ def calibrate():
     ) = mean_variance_and_inliers_along_third_dimension_ignore_zeros(
         depth_queue.get_frames_as_tensor()
     )
-
+    mean_left = np.asarray(mean_left.numpy(), dtype=np.uint16)
+    variance_left = np.asarray(variance_left.numpy(), dtype=np.uint16)
+    inliers_left = np.asarray(inliers_left.numpy(), dtype=np.uint16)
     (
         mean_right,
         variance_right,
@@ -179,30 +181,36 @@ def calibrate():
     ) = mean_variance_and_inliers_along_third_dimension_ignore_zeros(
         depth_queue_2.get_frames_as_tensor()
     )
+    mean_right = np.asarray(mean_right.numpy(), dtype=np.uint16)
+    variance_right = np.asarray(variance_right.numpy(), dtype=np.uint16)
+    inliers_right = np.asarray(inliers_right.numpy(), dtype=np.uint16)
 
     variance_image_l, zero_variance_image_l, threshold_l, filtered_means_l = get_maps(
-        variance_left.numpy(), mean_left.numpy(), 1
+        variance_left,
+        mean_left,
+        1,
     )
     variance_image_r, zero_variance_image_r, threshold_r, filtered_means_r = get_maps(
-        variance_right.numpy(), mean_right.numpy(), 1
+        variance_right,
+        mean_right,
+        1,
     )
 
     from scipy.interpolate import interp1d
 
     indexes = np.argwhere(variance_image_l == 255)
-    selected_m_l = np.copy(mean_left.numpy())
+    selected_m_l = np.copy(mean_left)
     selected_m_l[indexes[:, 0], indexes[:, 1]] = 0
     cv2.imwrite("temp/leftDepth.png", np.uint16(selected_m_l))
     cv2.imwrite("temp/leftColor.jpg", color_image)
 
     indexes = np.argwhere(variance_image_r == 255)
-    selected_m_r = np.copy(mean_right.numpy())
+    selected_m_r = np.copy(mean_right)
     selected_m_r[indexes[:, 0], indexes[:, 1]] = 0
     cv2.imwrite("temp/rightDepth.png", np.uint16(selected_m_r))
     cv2.imwrite("temp/rightColor.jpg", color_image_2)
 
     depth_raw_left = o3d.io.read_image("temp/leftDepth.png")
-
     color_raw_left = o3d.io.read_image("temp/leftColor.jpg")
     depth_raw_right = o3d.io.read_image("temp/rightDepth.png")
     color_raw_right = o3d.io.read_image("temp/rightColor.jpg")
@@ -325,7 +333,7 @@ def acquire(mesh=False):
 
     depth_frame_l = depth_queue_2.get_last_frame()
     color_frame_l = rgb_queue_2.get_last_frame()
-
+    print(depth_frame_l.dtype)
     depth_frame_r = depth_queue.get_last_frame()
     color_frame_r = rgb_queue.get_last_frame()
 

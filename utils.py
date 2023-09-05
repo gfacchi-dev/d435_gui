@@ -45,7 +45,7 @@ class FrameQueue:
             )
 
         # Stack frames along the third dimension to form a tensor
-        frames_tensor = torch.from_numpy(np.stack(frames, axis=-1))
+        frames_tensor = torch.from_numpy(np.stack(frames, axis=-1, dtype=np.float32))
 
         return frames_tensor
 
